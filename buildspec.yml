@@ -2,6 +2,7 @@ version: 0.2
 
 env:
   variables:
+    AWS_ACCOUNT_ID: "776345365315"
     AWS_DEFAULT_REGION: us-east-1
     IMAGE_REPO_NAME: coworking
     IMAGE_TAG: 1.0.0
@@ -9,18 +10,22 @@ env:
 phases:
   pre_build:
     commands:
-      - AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+      - AWS_ACCOUNT_ID=${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text)}
       - ECR_URI=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com/${IMAGE_REPO_NAME}
+      - echo "Building ${IMAGE_REPO_NAME}:${IMAGE_TAG} for ${ECR_URI}"
       - aws ecr describe-repositories --repository-names ${IMAGE_REPO_NAME} --region ${AWS_DEFAULT_REGION} || aws ecr create-repository --repository-name ${IMAGE_REPO_NAME} --region ${AWS_DEFAULT_REGION}
       - aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com
   build:
     commands:
+      - echo "Building Docker image"
       - docker build -t ${IMAGE_REPO_NAME}:${IMAGE_TAG} ./analytics
       - docker tag ${IMAGE_REPO_NAME}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
   post_build:
     commands:
+      - echo "Pushing Docker image to ECR"
       - docker push ${ECR_URI}:${IMAGE_TAG}
       - printf '[{"name":"coworking","imageUri":"%s"}]' ${ECR_URI}:${IMAGE_TAG} > imagedefinitions.json
+      - echo "Image pushed to ${ECR_URI}:${IMAGE_TAG}"
 
 artifacts:
   files:
